@@ -53,10 +53,7 @@ export const useTerminal = ({ onCommandFinished }: UseTerminalProps = {}) => {
   }, [lastOutput, onCommandFinished])
 
   const sendToTerminal = (command: string) => {
-    if (
-      socketRef.current &&
-      socketRef.current.readyState === WebSocket.OPEN
-    ) {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       // Send command with newline
       socketRef.current.send(
         JSON.stringify({ type: "input", data: command + "\n" })

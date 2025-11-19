@@ -1,0 +1,18 @@
+name: "Pi Terminal AI"
+description: "The world's first smart Linux-terminal–aware chat system with JSON command cards, Run buttons, and continuous terminal analysis."
+topics:
+  - ai
+  - terminal
+  - chat
+  - linux
+  - automation
+  - commands
+  - nextjs
+  - typescript
+  - xterm
+  - websocket
+  - openai
+  - development-tools
+  - developer-experience
+  - command-line
+  - intelligent-terminal

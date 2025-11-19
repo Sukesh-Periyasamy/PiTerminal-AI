@@ -3,6 +3,7 @@ import { ChatbotUIContext } from "@/context/context"
 import { LLM_LIST } from "@/lib/models/llm/llm-list"
 import { cn } from "@/lib/utils"
 import { extractCommands } from "@/lib/extract-commands"
+import { parseLLMResponse } from "@/lib/parse-llm-response"
 import { Tables } from "@/supabase/types"
 import { LLM, LLMID, MessageImage, ModelProvider } from "@/types"
 import {
@@ -25,6 +26,7 @@ import { WithTooltip } from "../ui/with-tooltip"
 import { MessageActions } from "./message-actions"
 import { MessageMarkdown } from "./message-markdown"
 import { RunButton } from "./run-button"
+import { CommandCard } from "../chat/command-card"
 
 const ICON_SIZE = 32
 
@@ -155,6 +157,12 @@ export const Message: FC<MessageProps> = ({
   // Extract commands from assistant messages
   const commands =
     message.role === "assistant" ? extractCommands(message.content) : []
+
+  // Parse JSON command responses from assistant messages
+  const parsedResponse =
+    message.role === "assistant"
+      ? parseLLMResponse(message.content)
+      : { isCommand: false, plainText: message.content }
 
   const modelDetails = LLM_LIST.find(model => model.modelId === message.model)
 
@@ -314,21 +322,37 @@ export const Message: FC<MessageProps> = ({
             />
           ) : (
             <>
-              <MessageMarkdown content={message.content} />
-              {/* Show run buttons for commands in assistant messages */}
+              {/* Check if this is a JSON command response first */}
               {message.role === "assistant" &&
-                commands.length > 0 &&
-                onRunCommand && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {commands.map((command, index) => (
-                      <RunButton
-                        key={index}
-                        command={command}
-                        onRun={onRunCommand}
-                      />
-                    ))}
-                  </div>
-                )}
+              parsedResponse.isCommand &&
+              parsedResponse.commandData &&
+              onRunCommand ? (
+                <div className="space-y-3">
+                  <CommandCard
+                    commandData={parsedResponse.commandData}
+                    onRun={onRunCommand}
+                    isExecuting={false}
+                  />
+                </div>
+              ) : (
+                <>
+                  <MessageMarkdown content={message.content} />
+                  {/* Show run buttons for commands in assistant messages (fallback) */}
+                  {message.role === "assistant" &&
+                    commands.length > 0 &&
+                    onRunCommand && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {commands.map((command, index) => (
+                          <RunButton
+                            key={index}
+                            command={command}
+                            onRun={onRunCommand}
+                          />
+                        ))}
+                      </div>
+                    )}
+                </>
+              )}
             </>
           )}
         </div>

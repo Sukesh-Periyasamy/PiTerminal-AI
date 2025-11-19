@@ -1,6 +1,6 @@
 # Backend Terminal Execution Engine
 
-This is the local backend for the terminal functionality in the chatbot UI.
+This is the local backend for the terminal functionality in Pi Terminal AI.
 
 ## Architecture
 

@@ -6,7 +6,8 @@ export const extractCommands = (content: string): string[] => {
   const commands: string[] = []
 
   // Extract bash/shell code blocks
-  const codeBlockRegex = /```(?:bash|sh|shell|zsh|powershell|ps1)\n([\s\S]*?)```/g
+  const codeBlockRegex =
+    /```(?:bash|sh|shell|zsh|powershell|ps1)\n([\s\S]*?)```/g
   let match
 
   while ((match = codeBlockRegex.exec(content)) !== null) {

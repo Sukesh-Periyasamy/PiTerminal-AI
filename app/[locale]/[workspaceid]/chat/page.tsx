@@ -12,7 +12,18 @@ import useHotkey from "@/lib/hooks/use-hotkey"
 import { useTheme } from "next-themes"
 import { useContext, useRef, useCallback } from "react"
 import DualPaneLayout from "@/layouts/DualPaneLayout"
-import TerminalPanel, { TerminalPanelRef } from "@/app/terminal/TerminalPanel"
+import dynamic from "next/dynamic"
+import { TerminalPanelRef } from "@/app/terminal/TerminalPanel"
+
+// Dynamic import to prevent SSR issues with xterm.js
+const TerminalPanel = dynamic(() => import("@/app/terminal/TerminalPanel"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full items-center justify-center">
+      Loading terminal...
+    </div>
+  )
+})
 
 export default function ChatPage() {
   useHotkey("o", () => handleNewChat())
@@ -20,13 +31,8 @@ export default function ChatPage() {
     handleFocusChatInput()
   })
 
-  const {
-    chatMessages,
-    selectedChat,
-    profile,
-    chatSettings,
-    setChatMessages
-  } = useContext(ChatbotUIContext)
+  const { chatMessages, selectedChat, profile, chatSettings, setChatMessages } =
+    useContext(ChatbotUIContext)
 
   const { handleNewChat, handleFocusChatInput, handleSendMessage } =
     useChatHandler()
@@ -35,34 +41,119 @@ export default function ChatPage() {
 
   const terminalRef = useRef<TerminalPanelRef>(null)
 
+  // Track the last command and request for analysis
+  const lastCommandRef = useRef<{
+    originalRequest: string
+    executedCommand: string
+  } | null>(null)
+
   const handleRunCommand = (command: string) => {
     if (terminalRef.current) {
+      // Store command for later analysis
+      const lastUserMessage = chatMessages
+        .filter(msg => msg.message.role === "user")
+        .pop()
+
+      lastCommandRef.current = {
+        originalRequest: lastUserMessage?.message.content || "",
+        executedCommand: command
+      }
+
       terminalRef.current.sendCommand(command)
     }
   }
 
   const handleTerminalOutputComplete = useCallback(
     async (output: string) => {
-      // Only explain if we have a chat and the output is meaningful
-      if (!selectedChat || !profile || output.length < 10) return
+      // Only analyze if we have the necessary context
+      if (!selectedChat || !profile || !lastCommandRef.current || !chatSettings)
+        return
 
-      // Create a prompt asking AI to explain the terminal output
-      const explanationPrompt = `I just ran a command in the terminal. Please briefly explain what happened:
+      const { originalRequest, executedCommand } = lastCommandRef.current
 
-\`\`\`
-${output.substring(0, 1000)}
-\`\`\`
-
-Keep it concise - just the key points about success/failure and what it means.`
-
-      // Send the explanation request to the AI
       try {
-        await handleSendMessage(explanationPrompt, chatMessages, false)
+        // Call the analysis API endpoint
+        const response = await fetch("/api/chat/analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            originalRequest,
+            executedCommand,
+            terminalOutput: output,
+            chatSettings
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error("Failed to analyze terminal output")
+        }
+
+        // Stream the response like a normal chat message
+        const reader = response.body?.getReader()
+        if (!reader) return
+
+        let analysisResult = ""
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const chunk = new TextDecoder().decode(value)
+          analysisResult += chunk
+        }
+
+        // Add the analysis result as an assistant message
+        const newMessage = {
+          message: {
+            chat_id: selectedChat.id,
+            assistant_id: null,
+            content: analysisResult,
+            created_at: new Date().toISOString(),
+            id: `analysis_${Date.now()}`,
+            image_paths: [],
+            model: chatSettings.model,
+            role: "assistant" as const,
+            sequence_number: chatMessages.length,
+            updated_at: new Date().toISOString(),
+            user_id: profile.user_id
+          },
+          fileItems: []
+        }
+
+        setChatMessages(prev => [...prev, newMessage])
       } catch (error) {
-        console.error("Failed to get AI explanation:", error)
+        console.error("Failed to analyze terminal output:", error)
+
+        // Add a simple error message
+        const errorMessage = {
+          message: {
+            chat_id: selectedChat.id,
+            assistant_id: null,
+            content: JSON.stringify({
+              title: "Analysis Failed",
+              explanation: "Could not analyze the terminal output",
+              command: "",
+              follow_up: "Please try running another command",
+              status: "error"
+            }),
+            created_at: new Date().toISOString(),
+            id: `error_${Date.now()}`,
+            image_paths: [],
+            model: chatSettings.model,
+            role: "assistant" as const,
+            sequence_number: chatMessages.length,
+            updated_at: new Date().toISOString(),
+            user_id: profile.user_id
+          },
+          fileItems: []
+        }
+
+        setChatMessages(prev => [...prev, errorMessage])
       }
     },
-    [selectedChat, profile, chatMessages, handleSendMessage]
+    [selectedChat, profile, chatMessages, chatSettings, setChatMessages]
   )
 
   const chatContent = (
